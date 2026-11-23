@@ -7,11 +7,7 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  - job_name: node-exporter
-    static_configs:
-      - targets: ["node-exporter:9100"]
-
-  # 容器指标由 Alloy 内嵌 cAdvisor 采集,经 remote_write 写入本实例
+  # 主机指标/容器指标由 Alloy 内嵌 unix exporter + cAdvisor 采集,经 remote_write 写入本实例
   - job_name: demo-web
     static_configs:
       - targets: ["demo-web:8080"]

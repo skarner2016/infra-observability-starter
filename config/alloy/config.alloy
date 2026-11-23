@@ -69,3 +69,32 @@ otelcol.processor.batch "default" {
 otelcol.exporter.loki "default" {
   forward_to = [loki.write.default.receiver]
 }
+// 主机指标:内嵌 unix exporter(node_exporter),经 /host/proc、/host/sys、
+// /rootfs 只读挂载采集,与 cAdvisor 共用同一 remote_write 管路。
+
+prometheus.exporter.unix "default" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  rootfs_path = "/rootfs"
+  filesystem {
+    mount_points_exclude = "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers)($$|/)"
+  }
+}
+
+prometheus.scrape "unix" {
+  targets         = prometheus.exporter.unix.default.targets
+  job_name        = "node-exporter"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.relabel.unix_job.receiver]
+}
+
+prometheus.relabel "unix_job" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+
+  rule {
+    source_labels = ["job"]
+    target_label  = "job"
+    replacement   = "node-exporter"
+  }
+}
+

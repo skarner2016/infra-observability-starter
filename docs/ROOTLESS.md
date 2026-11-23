@@ -14,7 +14,7 @@
 | 位置 | 现状 | rootless 下的问题 |
 |------|------|-------------------|
 | `compose.d/core.yaml` | Prometheus `user: root` + 挂载 `/var/run/docker.sock`(docker_sd) | socket 路径不同;rootful socket 风险高 |
-| `compose.d/exporters.yaml` | node-exporter `pid: host` | rootless 不支持 `pid: host` |
+| `compose.d/exporters.yaml` | node-exporter 独立容器(含 `pid: host`) | rootless 不支持 `pid: host`;现已内嵌进 alloy |
 | `compose.d/exporters.yaml` | cadvisor `privileged` + `/dev/kmsg` + `/var/lib/docker` 挂载 | rootless 下 `privileged` 无效,宿主目录挂载受限 |
 | `compose.d/logging.yaml` | Alloy 经 `/var/run/docker.sock` 采集容器日志(`loki.source.docker`) | rootless socket 路径不同;rootful 下 socket 权限过高 |
 
@@ -30,11 +30,13 @@ rootless 下 socket 位于 `$XDG_RUNTIME_DIR/docker.sock`(如 `/run/user/1000/do
 - `compose.d/examples.yaml` 删除全部 `prometheus.io/*` 标签。
 - 代价:示例服务未启动时,Prometheus 目标页对应目标显示 DOWN(可接受)。
 
-### 2. node-exporter rootless 兼容
+### 2. node-exporter 内嵌进 Alloy(unix exporter)
 
-- 移除 `pid: host`;保留 `/proc`、`/sys`、`/` 只读挂载。
-- 进程指标经 `--path.procfs=/host/proc` 继续可用。
-- 文档注明 rootless 下部分 collector(温度、hwmon、systemd 单元等)可能降级或缺失。
+- 删除独立 node-exporter 容器;改用 Alloy 的 `prometheus.exporter.unix`(v1.4.2 GA)。
+- Alloy 新增 `/proc`、`/sys`、`/` 只读挂载;`procfs_path=/host/proc`、`sysfs_path=/host/sys`、`rootfs_path=/rootfs`。
+- `filesystem.mount_points_exclude` 沿用原 node-exporter 排除规则。
+- 指标经 `prometheus.scrape` → `prometheus.remote_write` 推送 Prometheus。
+- rootless 下部分 collector(温度、hwmon、systemd 单元等)可能降级或缺失——与独立 node-exporter 行为一致。
 
 ### 3. cadvisor 统一内嵌进 Alloy
 
@@ -68,7 +70,7 @@ rootless 下 socket 位于 `$XDG_RUNTIME_DIR/docker.sock`(如 `/run/user/1000/do
 |------|---------|----------|
 | docker.sock | 仅内嵌 cAdvisor 容器元数据使用(root 级) | 仅内嵌 cAdvisor 容器元数据使用(用户级) |
 | 容器日志 | docker syslog 驱动 → 127.0.0.1:1514 → Alloy | 同左(驱动运行在用户级 dockerd,回环发送) |
-| node-exporter | 完整采集 | 部分 collector 降级 |
+| unix exporter(alloy 内嵌) | 完整采集 | 部分 collector 降级 |
 | cadvisor | Alloy 内嵌 + 宿主 cgroup 读取 | 同左;cgroup 读取受限程度需实测 |
 | Prometheus | 非 root,无 socket | 同左 |
 | 数据目录 | `make setup` 0777 | 同左 |
@@ -76,12 +78,12 @@ rootless 下 socket 位于 `$XDG_RUNTIME_DIR/docker.sock`(如 `/run/user/1000/do
 ## 验证计划
 
 - rootful(当前环境):
-  - 重建全栈,回归指标、日志、Grafana 仪表盘(已完成:syslog 日志入库 0 解析错误、cAdvisor remote_write 正常、静态目标全 up);
+  - 重建全栈,回归指标、日志、Grafana 仪表盘(已完成:unix exporter + cAdvisor remote_write 正常、syslog 日志入库 0 解析错误、静态目标全 up);
   - 已实测:Alloy 停机时运行中服务不受影响、日志丢失,Alloy 恢复后自动续传;caddy profile 依赖链正常。
 - rootless(有 rootless 主机时):
   - `make doctor` 通过 → `make up`;
-  - 验证容器以用户 uid 运行、syslog 日志入 Loki、主机指标可查、内嵌 cadvisor 提供容器指标。
-- 降级对照:记录 rootless 下 node-exporter/cadvisor 缺失的 collector 清单,写入 README。
+  - 验证容器以用户 uid 运行、syslog 日志入 Loki、unix exporter 主机指标可查、内嵌 cadvisor 容器指标可查。
+- 降级对照:记录 rootless 下 unix exporter/cadvisor 缺失的 collector 清单,写入 README。
 
 ## 已知限制与降级
 

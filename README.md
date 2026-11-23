@@ -12,8 +12,7 @@ flowchart LR
   end
 
   subgraph collect["采集层"]
-    node[node-exporter]
-    alloy["Alloy<br/>(syslog 接收 + 内嵌 cAdvisor)"]
+    alloy["Alloy<br/>(syslog 接收 + unix exporter<br/>+ 内嵌 cAdvisor)"]
   end
 
   subgraph host["宿主 Docker"]
@@ -26,10 +25,9 @@ flowchart LR
     graf[Grafana]
   end
 
-  node --> prom
   web --> prom
   proxy --> prom
-  alloy -. 容器指标 remote_write .-> prom
+  alloy -. 主机与容器指标 remote_write .-> prom
   proxy -. stdout/stderr .-> daemon
   web -. stdout/stderr .-> daemon
   daemon -->|TCP 127.0.0.1:1514| alloy
@@ -43,7 +41,7 @@ flowchart LR
 | 组件 | 职责 |
 |------|------|
 | Prometheus | 指标存储与查询,接收 Alloy remote_write |
-| Alloy | 接收 docker syslog 驱动的容器日志并写入 Loki;内嵌 cAdvisor 容器指标并 remote_write 到 Prometheus;预留 OTLP HTTP 接收端点 |
+| Alloy | 接收 docker syslog 驱动的容器日志并写入 Loki;内嵌 unix exporter(主机指标)与 cAdvisor(容器指标)并 remote_write 到 Prometheus;预留 OTLP HTTP 接收端点 |
 | Loki | 日志存储与查询 |
 | Grafana | 可视化与告警,数据源自动 provisioning |
 
@@ -55,7 +53,7 @@ infra-observability-starter/
 ├── compose.d/
 │   ├── core.yaml               # prometheus、grafana
 │   ├── logging.yaml            # alloy、loki
-│   ├── exporters.yaml          # node-exporter(主机指标;cadvisor 已内嵌进 alloy)
+│   ├── exporters.yaml          # 第三方 exporter 占位(unix exporter 已内嵌进 alloy)
 │   └── examples.yaml           # demo-web、nginx + nginx-exporter 或 caddy(二选一)
 │                               #   (全部 profiles: ["examples"],按需启动)
 ├── config/
@@ -80,7 +78,7 @@ infra-observability-starter/
 
 - **范围**:本版本不含数据库监控(自建/云数据库均不在范围内);后续如需接入,可考虑通过云监控 exporter(如 aliyun-exporter、cloudwatch-exporter)桥接。
 - **版本要求**:需 Docker Compose v2.20+,使用 `include` 特性。
-- **职责边界**:应用与主机指标由 Prometheus 静态抓取;容器指标由 Alloy 内嵌 cAdvisor 采集后经 remote_write 写入 Prometheus;容器日志由 docker syslog 驱动推送、Alloy 接收后写入 Loki。
+- **职责边界**:应用指标由 Prometheus 静态抓取(demo-web、nginx-exporter、caddy);主机指标与容器指标均由 Alloy 内嵌采集后经 remote_write 写入 Prometheus;容器日志由 docker syslog 驱动推送、Alloy 接收后写入 Loki。
 - **profiles**:`examples.yaml` 内所有服务声明 `profiles: ["examples"]`,核心栈默认启动;profiles 必须写在子文件服务上以保证兼容性。
 - **网络隔离**:核心与采集层在 `infra_net`;示例服务在 `examples_net`,仅访问端口映射到宿主机,管理端口保持内网。
 - **持久化**:数据统一挂载到 `data/`,Prometheus/Loki 配置 retention 与容量上限,防止磁盘写满。
@@ -123,7 +121,6 @@ make up-examples               # 可选:启动示例服务(demo-web + nginx)
 | Loki | 3100 | HTTP API |
 | Alloy | 4318 | OTLP HTTP 接收(可选) |
 | Alloy | 1514 | syslog 接收(仅绑定 127.0.0.1,供 docker 日志驱动回环推送) |
-| node-exporter | 9100 | 主机指标(仅内网) |
 | nginx / caddy | 8088 | 示例(二选一),演示指标与访问日志 |
 | demo-web | 8080 | 示例应用 |
 | nginx-exporter | 9113 | stub_status 转 Prometheus 格式(仅内网) |
@@ -134,7 +131,7 @@ make up-examples               # 可选:启动示例服务(demo-web + nginx)
 
 - rootless 下在 `.env` 设置 `DOCKER_SOCKET=$XDG_RUNTIME_DIR/docker.sock`(如 `/run/user/1000/docker.sock`),然后 `make doctor` 自检、`make up` 启动。
 - 日志链路使用 docker syslog 驱动 + 回环 TCP,与 rootless 兼容(dockerd 直接连接 `127.0.0.1:1514`,无需 socket)。
-- 已知差异:node-exporter 部分 collector(温度、hwmon 等)可能降级;内嵌 cAdvisor 的 cgroup 读取受限程度视宿主配置而定。
+- 已知差异:Alloy 内嵌 unix exporter 的某些 collector(温度、hwmon、systemd 等)在 rootless 下可能降级或不可用;内嵌 cAdvisor 的 cgroup 读取受限程度视宿主配置而定。
 - 详细方案与限制见 [docs/ROOTLESS.md](docs/ROOTLESS.md)。
 
 ## 告警
