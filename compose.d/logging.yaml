@@ -1,0 +1,33 @@
+services:
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-3.2.1}
+    restart: unless-stopped
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ../config/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ../data/loki:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    networks:
+      - infra_net
+
+  alloy:
+    image: grafana/alloy:${ALLOY_VERSION:-v1.4.2}
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-infra-observability-starter}
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - ../config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ../data/alloy:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${ALLOY_OTLP_HTTP_PORT:-4318}:4318"
+    depends_on:
+      - loki
+    networks:
+      - infra_net

@@ -1,0 +1,9 @@
+include:
+  - path: compose.d/core.yaml
+  - path: compose.d/logging.yaml
+  - path: compose.d/exporters.yaml
+  - path: compose.d/examples.yaml
+
+networks:
+  infra_net:
+  examples_net:

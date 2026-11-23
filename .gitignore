@@ -1,0 +1,6 @@
+.env
+compose.override.yaml
+data/
+__pycache__/
+*.pyc
+.DS_Store

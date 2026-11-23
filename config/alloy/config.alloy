@@ -1,0 +1,59 @@
+// 通过 docker API 发现容器,采集 stdout/stderr 日志并写入 Loki。
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  // 仅保留当前 compose 项目内的容器,避免采集宿主机上其他项目的日志
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "^/" + sys.env("COMPOSE_PROJECT_NAME") + "-.*"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "default" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// 预留:OTLP HTTP 接收端点(0.0.0.0:4318)。
+// 当前仅处理 logs;metrics/traces 收到的数据会被丢弃。
+otelcol.receiver.otlp "default" {
+  http {}
+
+  output {
+    logs = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  output {
+    logs = [otelcol.exporter.loki.default.input]
+  }
+}
+
+otelcol.exporter.loki "default" {
+  forward_to = [loki.write.default.receiver]
+}
