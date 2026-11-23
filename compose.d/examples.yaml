@@ -6,8 +6,18 @@ services:
       - examples
       - caddy
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "demo-web"
     ports:
       - "${DEMO_WEB_PORT:-8080}:8080"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - examples_net
 
@@ -16,11 +26,21 @@ services:
     profiles:
       - examples
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "nginx"
     volumes:
       - ../examples/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../examples/nginx/index.html:/usr/share/nginx/html/index.html:ro
     ports:
       - "${PROXY_PORT:-8088}:80"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - examples_net
 
@@ -29,8 +49,18 @@ services:
     profiles:
       - examples
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "nginx-exporter"
     command:
       - -nginx.scrape-uri=http://nginx/stub_status
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - examples_net
 
@@ -39,10 +69,20 @@ services:
     profiles:
       - caddy
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "caddy"
     volumes:
       - ../examples/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ../examples/caddy/index.html:/usr/share/caddy/index.html:ro
     ports:
       - "${PROXY_PORT:-8088}:80"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - examples_net

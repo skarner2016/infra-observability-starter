@@ -2,6 +2,13 @@ services:
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v2.54.1}
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "prometheus"
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -14,6 +21,9 @@ services:
       - ../data/prometheus:/prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - infra_net
       - examples_net
@@ -21,6 +31,13 @@ services:
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION:-11.2.0}
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "grafana"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -33,6 +50,9 @@ services:
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_started
+      alloy:
+        condition: service_healthy
     networks:
       - infra_net

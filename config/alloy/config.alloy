@@ -19,38 +19,29 @@ prometheus.remote_write "prometheus" {
   }
 }
 
-// 通过 docker API 发现容器,采集 stdout/stderr 日志并写入 Loki。
+// 容器日志:接收 docker syslog 日志驱动(RFC5424/TCP)推送的消息并写入 Loki。
+// 日志驱动运行在宿主 dockerd,经 127.0.0.1:1514 回环接入(compose 中发布该端口);
+// 每个服务 compose 中的 tag 对应 RFC5424 的 APP-NAME,映射为 Loki 的 service 标签。
 
-discovery.docker "containers" {
-  host = "unix:///var/run/docker.sock"
+loki.source.syslog "docker" {
+  listener {
+    address  = "0.0.0.0:1514"
+    protocol = "tcp"
+    labels   = { job = "docker" }
+    use_incoming_timestamp = true
+  }
+
+  forward_to    = [loki.write.default.receiver]
+  relabel_rules = discovery.relabel.syslog.rules
 }
 
-discovery.relabel "containers" {
-  targets = discovery.docker.containers.targets
-
-  // 仅保留当前 compose 项目内的容器,避免采集宿主机上其他项目的日志
-  rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "^/" + sys.env("COMPOSE_PROJECT_NAME") + "-.*"
-    action        = "keep"
-  }
+discovery.relabel "syslog" {
+  targets = []
 
   rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "/(.*)"
-    target_label  = "container"
-  }
-
-  rule {
-    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    source_labels = ["__syslog_message_app_name"]
     target_label  = "service"
   }
-}
-
-loki.source.docker "default" {
-  host       = "unix:///var/run/docker.sock"
-  targets    = discovery.relabel.containers.output
-  forward_to = [loki.write.default.receiver]
 }
 
 loki.write "default" {

@@ -2,6 +2,13 @@ services:
   loki:
     image: grafana/loki:${LOKI_VERSION:-3.2.1}
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "loki"
     command:
       - -config.file=/etc/loki/loki.yaml
     volumes:
@@ -9,14 +16,15 @@ services:
       - ../data/loki:/loki
     ports:
       - "${LOKI_PORT:-3100}:3100"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - infra_net
 
   alloy:
     image: grafana/alloy:${ALLOY_VERSION:-v1.4.2}
     restart: unless-stopped
-    environment:
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-infra-observability-starter}
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -29,7 +37,12 @@ services:
       - ${DOCKER_DATA_ROOT:-/var/lib/docker}:/var/lib/docker:ro
     ports:
       - "${ALLOY_OTLP_HTTP_PORT:-4318}:4318"
-    depends_on:
-      - loki
+      - "127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}:1514"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/1514"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     networks:
       - infra_net

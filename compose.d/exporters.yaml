@@ -2,6 +2,13 @@ services:
   node-exporter:
     image: prom/node-exporter:${NODE_EXPORTER_VERSION:-v1.8.2}
     restart: unless-stopped
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "tcp://127.0.0.1:${ALLOY_SYSLOG_PORT:-1514}"
+        syslog-format: "rfc5424"
+        syslog-facility: "daemon"
+        tag: "node-exporter"
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
@@ -13,5 +20,8 @@ services:
       - /:/rootfs:ro
     expose:
       - "9100"
+    depends_on:
+      alloy:
+        condition: service_healthy
     networks:
       - infra_net
