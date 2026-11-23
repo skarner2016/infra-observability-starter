@@ -8,9 +8,6 @@ services:
     restart: unless-stopped
     ports:
       - "${DEMO_WEB_PORT:-8080}:8080"
-    labels:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "8080"
     networks:
       - examples_net
 
@@ -34,9 +31,6 @@ services:
     restart: unless-stopped
     command:
       - -nginx.scrape-uri=http://nginx/stub_status
-    labels:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "9113"
     networks:
       - examples_net
 
@@ -50,8 +44,5 @@ services:
       - ../examples/caddy/index.html:/usr/share/caddy/index.html:ro
     ports:
       - "${PROXY_PORT:-8088}:80"
-    labels:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "2019"
     networks:
       - examples_net

@@ -2,18 +2,16 @@ services:
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION:-v2.54.1}
     restart: unless-stopped
-    # docker_sd 需要读取 /var/run/docker.sock;各宿主 socket 属组不一致(Docker Desktop 仅 root 可读),统一以 root 运行
-    user: root
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-30d}
       - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-10GB}
       - --web.enable-lifecycle
+      - --web.enable-remote-write-receiver
     volumes:
       - ../config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../data/prometheus:/prometheus
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     networks:
